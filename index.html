@@ -2,13 +2,10 @@
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  
   <title>KeyWord热度 + 气温 + 搜索 + 最近一周(排序) + 重试</title>
 
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js" defer></script>
-  
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.2.1" defer></script>
 
   <style>
@@ -17,7 +14,8 @@
       padding: 0;
       height: 100%;
       font-family: sans-serif;
-      overflow: auto;
+      /* 优化 (UX): 防止在侧边栏动画时出现水平滚动条 */
+      overflow-x: hidden; 
     }
     .sidebar-toggle {
       position: fixed; left: 0; top: 0;
@@ -41,6 +39,23 @@
     .sidebar.active {
       transform: translateX(0);
     }
+
+    /* 优化 (UX): 新增的侧边栏关闭按钮样式 */
+    .sidebar-close-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      font-size: 20px;
+      font-weight: bold;
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #888;
+    }
+    .sidebar-close-btn:hover {
+      color: #000;
+    }
+
     .sidebar h3 {
       margin: 0 0 6px 0;
       display: flex; align-items: center; gap: 4px;
@@ -78,23 +93,47 @@
       margin-left: 60px;
       display: flex; flex-direction: column;
       height: 100vh;
+      /* 优化 (UX): 添加平滑过渡动画 */
+      transition: margin-left 0.3s;
     }
+
+    /* 优化 (UX): 侧边栏激活时，"推动"主内容区域 */
+    .main-area.sidebar-open {
+      margin-left: 280px;
+    }
+
     .topbar {
       background: #f0f0f0; padding: 8px;
       display: flex; align-items: center; gap: 6px;
       flex-shrink: 0;
     }
-
-    /* 优化 (专业): 将 H1 的内联样式移到了这里。
-       这符合 CSS 最佳实践，使 HTML 更干净，更易于维护。 */
+    /* 优化 (专业): 从 H1 标签中移出的内联样式 */
     .topbar h1 {
       margin: 0; 
       flex: 1;
+      /* 优化 (美化): 确保标题在小屏幕上也能正常显示 */
+      font-size: 1.2em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-
     .chart-container {
       flex: 1; position: relative; overflow: auto;
     }
+
+    /* 优化 (UX): "加载中"提示的样式 */
+    #loadingIndicator {
+      display: none; /* 默认隐藏 */
+      position: absolute;
+      top: 50px;
+      left: 0;
+      right: 0;
+      text-align: center;
+      font-size: 1.5em;
+      color: #888;
+      z-index: 10;
+    }
+
     #myChart {
       min-width: 1200px;
       min-height: 600px;
@@ -106,6 +145,8 @@
   <button class="sidebar-toggle" id="toggleSidebar">≡</button>
 
   <div class="sidebar" id="sidebar">
+    <button id="closeSidebar" class="sidebar-close-btn">×</button>
+
     <h3>
       分组
       <button id="globalAllBtn">全选</button>
@@ -130,11 +171,14 @@
       <button id="btnFilter">更新区间</button>
     </div>
     <div class="chart-container">
+      <div id="loadingIndicator">
+        <h2>正在加载数据，请稍候...</h2>
+      </div>
       <canvas id="myChart"></canvas>
     </div>
   </div>
 
-  <script>
+<script>
     /***************************************************************
      * 1) CSV链接
      ***************************************************************/
@@ -236,7 +280,6 @@
     function fetchTempCSV(url) {
       return parseCSVWithRetry(url, 3);
     }
-    // 第0行=标题, 第1行起 => [week_label, value]
     function convertTempData(raw2D) {
       const map = {};
       for (let r = 1; r < raw2D.length; r++) {
@@ -256,7 +299,6 @@
       const ctx = document.getElementById("myChart").getContext("2d");
       if (chart) chart.destroy();
 
-      // 添加气温线(右轴, 虚线)
       dsList.push({
         label: "平均气温",
         data: tempAvgData,
@@ -332,7 +374,7 @@
     }
 
     /***************************************************************
-     * D. 在关键词后面显示“(最后一周数值)” —— 取数组最后一个值
+     * D. 在关键词后面显示“(最后一周数值)”
      ***************************************************************/
     function getLatestValue(arr) {
       if (arr.length === 0) return NaN;
@@ -340,7 +382,7 @@
     }
 
     /***************************************************************
-     * D. 渲染侧边栏(分组+关键词) —— 同组内关键词按最后一周数值升序排序
+     * D. 渲染侧边栏(分组+关键词)
      ***************************************************************/
     function renderGroupSidebar(gData) {
       const container = document.getElementById("groupContainer");
@@ -353,17 +395,11 @@
         totalGroups++;
         const details = document.createElement("details");
         details.className = "group-panel";
-
-        // summary
         const summary = document.createElement("summary");
         summary.textContent = grp;
 
-        // 分组内 全选/全不选按钮
         const allBtn = document.createElement("button");
         allBtn.textContent = "全选";
-        /* 优化 (高效): 移除了 'allBtn.style.fontSize = "12px";'
-           因为您的 CSS 中已有 'summary button { font-size: 12px; ... }' 规则，
-           JS 里的这行代码是多余的。 */
         allBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           setGroupCheck(grp, true);
@@ -372,16 +408,13 @@
 
         const noneBtn = document.createElement("button");
         noneBtn.textContent = "全不选";
-        /* 优化 (高效): 同上，移除了 'noneBtn.style.fontSize = "12px";' */
         noneBtn.addEventListener("click", (e) => {
           e.stopPropagation();
           setGroupCheck(grp, false);
         });
         summary.appendChild(noneBtn);
-
         details.appendChild(summary);
 
-        // 关键词 => 先收集后排序（根据最后一周数值升序，NaN排后）
         const kwMap = gData[grp];
         let kwArray = Object.keys(kwMap).map(kw => {
           const arr = kwMap[kw];
@@ -397,7 +430,6 @@
           return A - B;
         });
 
-        // 创建关键词 label，每个在单独行里显示
         kwArray.forEach(obj => {
           const lb = document.createElement("label");
           const cb = document.createElement("input");
@@ -435,15 +467,14 @@
 
       const s = term.trim().toLowerCase();
       let visibleCount = 0;
-
       const groupPanels = document.querySelectorAll(".group-panel");
+
       groupPanels.forEach(panel => {
         const summary = panel.querySelector("summary");
         if (!summary) return;
         const grpName = summary.childNodes[0].textContent;
         const grpLower = grpName.toLowerCase();
         const labels = panel.querySelectorAll("label");
-
         let groupMatched = s.length > 0 && grpLower.includes(s);
         let matchedKw = 0;
 
@@ -490,7 +521,7 @@
       cbs.forEach(cb => {
         const grp = cb.dataset.group;
         const kw = cb.dataset.keyword;
-        const arr = globalGroupsRaw[grp][kw]; // 使用原始数据
+        const arr = globalGroupsRaw[grp][kw];
         dsList.push({
           label: grp + "/" + kw,
           data: arr,
@@ -641,93 +672,140 @@
      * H. 主流程
      ***************************************************************/
     async function main() {
-      // 1) 加载关键词
-      const keywordRaw = await parseCSVWithRetry(KEYWORD_CSV_URL, 3);
-      const longData = convertWideToLong(keywordRaw.data);
-      const { weeks, groups } = processLongRows(longData);
-      labelsAll = weeks;
-      globalGroupsRaw = groups; // 原始数据保存
-      groupsData = groups;     // 当前显示
+      // 优化 (UX): 显示"加载中"提示
+      const loadingEl = document.getElementById("loadingIndicator");
+      const chartEl = document.getElementById("myChart");
+      if (loadingEl) loadingEl.style.display = "block";
+      if (chartEl) chartEl.style.display = "none";
 
-      // 2) 加载平均气温
-      const avgRaw = await parseCSVWithRetry(AVG_TEMP_CSV_URL, 3);
-      const avgMap = convertTempData(avgRaw.data);
+      try {
+        // 1) 加载关键词
+        const keywordRaw = await parseCSVWithRetry(KEYWORD_CSV_URL, 3);
+        const longData = convertWideToLong(keywordRaw.data);
+        const { weeks, groups } = processLongRows(longData);
+        labelsAll = weeks;
+        globalGroupsRaw = groups; // 原始数据保存
+        groupsData = groups;     // 当前显示
 
-      // 3) 加载最高气温
-      const maxRaw = await parseCSVWithRetry(MAX_TEMP_CSV_URL, 3);
-      const maxMap = convertTempData(maxRaw.data);
+        // 2) 加载平均气温
+        const avgRaw = await parseCSVWithRetry(AVG_TEMP_CSV_URL, 3);
+        const avgMap = convertTempData(avgRaw.data);
 
-      // 4) 对齐气温数据
-      tempAvgData = new Array(labelsAll.length).fill(NaN);
-      tempMaxData = new Array(labelsAll.length).fill(NaN);
-      labelsAll.forEach((wk, i) => {
-        if (avgMap[wk] != null) {
-          tempAvgData[i] = avgMap[wk];
+        // 3) 加载最高气温
+        const maxRaw = await parseCSVWithRetry(MAX_TEMP_CSV_URL, 3);
+        const maxMap = convertTempData(maxRaw.data);
+
+        // 4) 对齐气温数据
+        tempAvgData = new Array(labelsAll.length).fill(NaN);
+        tempMaxData = new Array(labelsAll.length).fill(NaN);
+        labelsAll.forEach((wk, i) => {
+          if (avgMap[wk] != null) {
+            tempAvgData[i] = avgMap[wk];
+          }
+          if (maxMap[wk] != null) {
+            tempMaxData[i] = maxMap[wk];
+          }
+        });
+
+        // 5) 渲染侧边栏
+        renderGroupSidebar(groupsData);
+
+        // 6) 初始化下拉
+        const startSel = document.getElementById("startWeek");
+        const endSel = document.getElementById("endWeek");
+        // 清空旧选项（刷新时需要）
+        startSel.innerHTML = '';
+        endSel.innerHTML = '';
+        weeks.forEach((wk, i) => {
+          const opt1 = document.createElement("option");
+          opt1.value = i;
+          opt1.text = wk.replace("_Week_", " W");
+          startSel.appendChild(opt1);
+
+          const opt2 = document.createElement("option");
+          opt2.value = i;
+          opt2.text = wk.replace("_Week_", " W");
+          endSel.appendChild(opt2);
+        });
+        startSel.value = 0;
+        endSel.value = weeks.length - 1;
+
+        // 7) 默认全选
+        updateVisibleLines();
+      } catch (err) {
+        // 优化 (UX): 错误处理
+        console.error("数据加载失败:", err);
+        if (loadingEl) {
+          loadingEl.innerHTML = `<h2>数据加载失败，请检查网络或CSV链接后重试。</h2>`;
         }
-        if (maxMap[wk] != null) {
-          tempMaxData[i] = maxMap[wk];
+      } finally {
+        // 优化 (UX): 隐藏"加载中"提示 (除非出错)
+        if (loadingEl && loadingEl.style.display === "block") {
+           loadingEl.style.display = "none";
         }
-      });
-
-      // 5) 渲染侧边栏
-      renderGroupSidebar(groupsData);
-
-      // 6) 初始化下拉
-      const startSel = document.getElementById("startWeek");
-      const endSel = document.getElementById("endWeek");
-      weeks.forEach((wk, i) => {
-        const opt1 = document.createElement("option");
-        opt1.value = i;
-        opt1.text = wk.replace("_Week_", " W");
-        startSel.appendChild(opt1);
-
-        const opt2 = document.createElement("option");
-        opt2.value = i;
-        opt2.text = wk.replace("_Week_", " W");
-        endSel.appendChild(opt2);
-      });
-      startSel.value = 0;
-      endSel.value = weeks.length - 1;
-
-      // 7) 默认全选
-      updateVisibleLines();
+        if (chartEl) chartEl.style.display = "block";
+      }
     }
 
-    /***************************************************************
-     * K. 事件绑定 (原 'K' 部分)
-     ***************************************************************/
-    document.getElementById("toggleSidebar").addEventListener("click", () => {
-      document.getElementById("sidebar").classList.toggle("active");
-    });
-    document.getElementById("btnRefresh").addEventListener("click", () => {
-      main();
-    });
-    document.getElementById("btnFilter").addEventListener("click", () => {
-      const s = parseInt(document.getElementById("startWeek").value);
-      const e = parseInt(document.getElementById("endWeek").value);
-      const startIdx = Math.min(s, e);
-      const endIdx = Math.max(s, e);
-      filterDataRange(startIdx, endIdx);
-    });
-    document.getElementById("globalAllBtn").addEventListener("click", () => {
-      setAllCheck(true);
-    });
-    document.getElementById("globalNoneBtn").addEventListener("click", () => {
-      setAllCheck(false);
-    });
-    // 搜索相关
-    document.getElementById("searchInput").addEventListener("input", (e) => {
-      applySearchFilter(e.target.value);
-    });
-    document.getElementById("btnClearSearch").addEventListener("click", () => {
-      const inp = document.getElementById("searchInput");
-      inp.value = "";
-      applySearchFilter("");
-    });
+    /* 优化 (专业): 删除了重复的 parseCSVWithRetry (原 I.) 
+     和未使用的 parseCSV (原 J.)
+    */
 
+    /***************************************************************
+     * K. 事件绑定
+     ***************************************************************/
+    // 优化 (专业): 将所有事件绑定移入 DOMContentLoaded 
     document.addEventListener("DOMContentLoaded", () => {
+      
+      // 优化 (UX): 缓存侧边栏相关元素
+      const sidebar = document.getElementById("sidebar");
+      const mainArea = document.querySelector(".main-area");
+      
+      // 侧边栏打开按钮
+      document.getElementById("toggleSidebar").addEventListener("click", () => {
+        sidebar.classList.add("active");
+        mainArea.classList.add("sidebar-open");
+      });
+
+      // 优化 (UX): 侧边栏关闭按钮
+      document.getElementById("closeSidebar").addEventListener("click", () => {
+        sidebar.classList.remove("active");
+        mainArea.classList.remove("sidebar-open");
+      });
+
+      // 顶部栏按钮
+      document.getElementById("btnRefresh").addEventListener("click", () => {
+        main();
+      });
+      document.getElementById("btnFilter").addEventListener("click", () => {
+        const s = parseInt(document.getElementById("startWeek").value);
+        const e = parseInt(document.getElementById("endWeek").value);
+        const startIdx = Math.min(s, e);
+        const endIdx = Math.max(s, e);
+        filterDataRange(startIdx, endIdx);
+      });
+
+      // 侧边栏内部按钮
+      document.getElementById("globalAllBtn").addEventListener("click", () => {
+        setAllCheck(true);
+      });
+      document.getElementById("globalNoneBtn").addEventListener("click", () => {
+        setAllCheck(false);
+      });
+      
+      // 搜索相关
+      document.getElementById("searchInput").addEventListener("input", (e) => {
+        applySearchFilter(e.target.value);
+      });
+      document.getElementById("btnClearSearch").addEventListener("click", () => {
+        const inp = document.getElementById("searchInput");
+        inp.value = "";
+        applySearchFilter("");
+      });
+
+      // 初始加载
       main();
     });
-  </script>
+</script>
 </body>
 </html>
