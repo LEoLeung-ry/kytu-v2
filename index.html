@@ -56,8 +56,6 @@
       margin: 0 0 6px 0;
       display: flex; align-items: center; gap: 4px;
     }
-    
-    /* 优化 (UX): 新增环境数据面板样式 */
     .env-panel {
       margin-bottom: 15px;
       border: 1px solid #ccc;
@@ -66,9 +64,8 @@
       background: #fff;
     }
     .env-panel label {
-      margin-left: 5px; /* 覆盖默认的 label margin */
+      margin-left: 5px;
     }
-
     .search-row {
       display: flex; align-items: center; gap: 4px;
       margin-bottom: 8px;
@@ -150,14 +147,14 @@
     <h3>环境数据</h3>
     <div id="envDataContainer" class="env-panel">
       <label>
-        <input type="checkbox" data-env="avgTemp" checked>
+        <input type="checkbox" data-env="avgTemp">
         平均气温
       </label>
       <label>
-        <input type="checkbox" data-env="maxTemp" checked>
+        <input type="checkbox" data-env="maxTemp">
         最高气温
       </label>
-      </div>
+    </div>
     
     <h3>
       分组
@@ -197,7 +194,6 @@
     const KEYWORD_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTxT7pk3XLnPr87Fpq2Fii90bqh_R2jsCjO6e3dZkMLKmuw75ksYiuSce3DC7uUK5IXBEFmeKT1P7oJ/pub?output=csv";
     const AVG_TEMP_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQsIu0jYheUb5YE9-D0SwtL6FxkTjFwEgWaH56NdOyqYfNkcZLJGM2xp9T2wPLcF5lYFBZ3UCa7eiaj/pub?output=csv";
     const MAX_TEMP_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSnxZTyYhuMkeM0D0ystDYz2w0tQJZDN5yyxoy51Rl8yA23j-7nSm3gOC4SeAJnhB9_iHT_mTIVzZlR/pub?output=csv";
-    // 新增: 湿度 CSV
     const HUMIDITY_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRK9sDUtGwwoXVOcrB3oB3-EmGl2_M1M1kGRoZlLDU2GEzmVhY2ZvF54uTqFtu204PJ6yI95w-GpXSo/pub?gid=1893854525&single=true&output=csv";
 
     /***************************************************************
@@ -205,15 +201,14 @@
      ***************************************************************/
     let chart;
     let labelsAll = [];
-    let groupsData = {};     // 当前显示的分组/关键词数据
-    let globalGroupsRaw = {}; // 原始分组数据，用于搜索还原
+    let groupsData = {};
+    let globalGroupsRaw = {};
     let tempAvgData = [];
     let tempMaxData = [];
-    // 新增: 湿度数据
-    let humidityData = {}; // 格式: { "Tokyo": [...], "Osaka": [...] }
+    let humidityData = {};
 
     /***************************************************************
-     * 重试机制：前端拉取 CSV (最多尝试3次)
+     * 重试机制
      ***************************************************************/
     function parseCSVWithRetry(url, maxAttempts = 3) {
       return new Promise((resolve, reject) => {
@@ -238,7 +233,7 @@
     }
 
     /***************************************************************
-     * A. 加载&解析 关键词 CSV
+     * A. 关键词 CSV 解析
      ***************************************************************/
     function convertWideToLong(raw2D) {
       const rowGroup = raw2D[0];
@@ -261,7 +256,6 @@
       const setWeeks = new Set();
       longData.forEach(it => setWeeks.add(it.week_label));
       const weeks = Array.from(setWeeks).sort();
-
       const gData = {};
       const count = weeks.length;
       longData.forEach(it => {
@@ -274,7 +268,6 @@
         const idx = weeks.indexOf(w);
         gData[g][k][idx] = v;
       });
-
       const sorted = {};
       Object.keys(gData).sort().forEach(gName => {
         const kwMap = gData[gName];
@@ -288,7 +281,7 @@
     }
 
     /***************************************************************
-     * B. 加载&解析 气温 CSV (单列)
+     * B. 气温 CSV (单列)
      ***************************************************************/
     function convertTempData(raw2D) {
       const map = {};
@@ -303,29 +296,24 @@
     }
 
     /***************************************************************
-     * B2. 新增: 加载&解析 湿度 CSV (多列)
+     * B2. 湿度 CSV (多列)
      ***************************************************************/
     function processHumidityData(raw2D) {
       const headers = raw2D[0];
-      const humidityMap = {}; // 格式: { "Tokyo": {"week_label": 68.43, ...}, ... }
+      const humidityMap = {};
       const cityNames = [];
-
-      // 从第1列开始是城市名
       for (let c = 1; c < headers.length; c++) {
         const cityName = headers[c];
         cityNames.push(cityName);
         humidityMap[cityName] = {};
       }
-
-      // 从第1行开始是数据
       for (let r = 1; r < raw2D.length; r++) {
         const row = raw2D[r];
         if (!row[0]) continue;
-        const wk = row[0]; // 第0列是 week_label
-        
+        const wk = row[0];
         for (let c = 1; c < headers.length; c++) {
           const cityName = headers[c];
-          const val = parseFloat(row[c] || NaN); // 转为数字，无效值为 NaN
+          const val = parseFloat(row[c] || NaN);
           humidityMap[cityName][wk] = val;
         }
       }
@@ -333,7 +321,7 @@
     }
 
     /***************************************************************
-     * C. createChart(): 唯一的图表创建/更新函数
+     * C. createChart()
      ***************************************************************/
     function createChart(weeks, dsList) {
       const ctx = document.getElementById("myChart").getContext("2d");
@@ -348,23 +336,23 @@
           interaction: { mode: 'index', intersect: false },
           scales: {
             x: { title: { display: true, text: "周" } },
-            y: { // 关键词 Y轴 (左)
+            y: { 
               reverse: true,
               title: { display: true, text: "关键词热度(数值小→上)" }
             },
-            y2: { // 气温 Y轴 (右)
+            y2: { 
               type: "linear",
               position: "right",
               reverse: false,
               title: { display: true, text: "气温(℃)" },
-              grid: { drawOnChartArea: false } // 不绘制网格线，避免混乱
+              grid: { drawOnChartArea: false } 
             },
-            y3: { // 新增: 湿度 Y轴 (右)
+            y3: { 
               type: "linear",
               position: "right",
               reverse: false,
               title: { display: true, text: "湿度(%)" },
-              grid: { drawOnChartArea: false }, // 不绘制网格线
+              grid: { drawOnChartArea: false }, 
               min: 0,
               max: 100
             }
@@ -381,11 +369,9 @@
                   if (context.dataset.yAxisID === "y2") {
                     str += "°C";
                   }
-                  // 新增: 湿度单位
                   if (context.dataset.yAxisID === "y3") {
                     str += "%";
                   }
-                  
                   const yoyIdx = context.dataIndex - 52;
                   if (yoyIdx >= 0) {
                     const yoyVal = context.dataset.data[yoyIdx];
@@ -464,7 +450,8 @@
           const lb = document.createElement("label");
           const cb = document.createElement("input");
           cb.type = "checkbox";
-          cb.checked = true;
+          // 保持您截图中的状态，默认为 false。您可以按需改回 'true'
+          cb.checked = false; 
           cb.dataset.group = grp;
           cb.dataset.keyword = obj.kw;
           let lastStr = "";
@@ -482,15 +469,12 @@
       if (totalGroups === 0) {
         noMatchMsg.style.display = "";
       }
-
-      // 重构: 监听器现在调用 updateChartDisplay
-      container.addEventListener("change", (e) => {
-        if (e.target.type === "checkbox") updateChartDisplay();
-      });
+      
+      // 【修复】: 移除了这里的事件监听器
     }
 
     /***************************************************************
-     * D2. 搜索：过滤不匹配的分组/关键词
+     * D2. 搜索
      ***************************************************************/
     function applySearchFilter(term) {
       const noMatchMsg = document.getElementById("noMatchMsg");
@@ -537,17 +521,20 @@
     }
 
     /***************************************************************
-     * E. 重构: updateChartDisplay()
-     * (合并了原 updateVisibleLines 和 filterDataRange)
-     * 这是现在唯一的图表更新函数。
+     * E. updateChartDisplay() - 唯一的图表更新函数
      ***************************************************************/
     function updateChartDisplay() {
-      // 1. 获取日期范围
+      // 1. 【修复】: 使用更健壮的逻辑获取日期范围
       const s = parseInt(document.getElementById("startWeek").value);
       const e = parseInt(document.getElementById("endWeek").value);
+      
+      // 检查 s 和 e 是否为 NaN，如果是，则使用默认值
+      const startVal = isNaN(s) ? 0 : s;
+      const endVal = isNaN(e) ? (labelsAll.length > 0 ? labelsAll.length - 1 : 0) : e;
+      
       // 确保 startIdx 总是小于 endIdx
-      const startIdx = isNaN(s) ? 0 : Math.min(s, e);
-      const endIdx = isNaN(e) ? labelsAll.length - 1 : Math.max(s, e);
+      const startIdx = Math.min(startVal, endVal);
+      const endIdx = Math.max(startVal, endVal);
 
       // 2. 切片周标签
       const slicedWeeks = labelsAll.slice(startIdx, endIdx + 1);
@@ -556,9 +543,8 @@
       const colorList = [
         "#e6194b", "#3cb44b", "#ffe119", "#0082c8", "#f58231", "#911eb4", "#46f0f0",
         "#f032e6", "#d2f53c", "#fabebe", "#008080", "#e6beff", "#aa6e28", "#fffac8",
-        "#800000", "#aaffc3", "#808000", "#ffd8b1", "#000080", "#808080", "#000000"
+        "#800000", "#aaffc3", "#808080", "#ffd8b1", "#000080", "#808080", "#000000"
       ];
-      // 新增: 湿度颜色列表
       const humidityColorList = [
           "#4bc0c0", "#9966ff", "#ff9f40", "#ff6384", "#c9cbcf", "#36a2eb"
       ];
@@ -569,98 +555,80 @@
       cbs.forEach(cb => {
         const grp = cb.dataset.group;
         const kw = cb.dataset.keyword;
-        const fullData = globalGroupsRaw[grp][kw];
-        const slicedData = fullData.slice(startIdx, endIdx + 1); // 切片
-        dsList.push({
-          label: grp + "/" + kw,
-          data: slicedData,
-          borderColor: colorList[keywordIdx % colorList.length],
-          fill: false,
-          tension: 0.1,
-          pointRadius: 2,
-          pointHoverRadius: 6,
-          yAxisID: "y" // 关键词轴
-        });
-        keywordIdx++;
+        if (globalGroupsRaw[grp] && globalGroupsRaw[grp][kw]) {
+          const fullData = globalGroupsRaw[grp][kw];
+          const slicedData = fullData.slice(startIdx, endIdx + 1);
+          dsList.push({
+            label: grp + "/" + kw,
+            data: slicedData,
+            borderColor: colorList[keywordIdx % colorList.length],
+            fill: false,
+            tension: 0.1,
+            pointRadius: 2,
+            pointHoverRadius: 6,
+            yAxisID: "y" 
+          });
+          keywordIdx++;
+        }
       });
       
       // 4. 构建环境数据集
-      // 气温
       if (document.querySelector(`input[data-env="avgTemp"]`).checked) {
         dsList.push({
           label: "平均气温",
-          data: tempAvgData.slice(startIdx, endIdx + 1), // 切片
+          data: tempAvgData.slice(startIdx, endIdx + 1),
           borderColor: "rgba(0,0,255,0.7)",
-          borderWidth: 2,
-          borderDash: [6, 3], // 虚线
-          fill: false,
-          tension: 0.1,
-          pointRadius: 0,
-          pointHoverRadius: 6,
-          yAxisID: "y2" // 气温轴
+          borderWidth: 2, borderDash: [6, 3], fill: false, tension: 0.1,
+          pointRadius: 0, pointHoverRadius: 6, yAxisID: "y2"
         });
       }
       if (document.querySelector(`input[data-env="maxTemp"]`).checked) {
          dsList.push({
           label: "最高气温",
-          data: tempMaxData.slice(startIdx, endIdx + 1), // 切片
+          data: tempMaxData.slice(startIdx, endIdx + 1),
           borderColor: "rgba(255,0,0,0.7)",
-          borderWidth: 2,
-          borderDash: [6, 3], // 虚线
-          fill: false,
-          tension: 0.1,
-          pointRadius: 0,
-          pointHoverRadius: 6,
-          yAxisID: "y2" // 气温轴
+          borderWidth: 2, borderDash: [6, 3], fill: false, tension: 0.1,
+          pointRadius: 0, pointHoverRadius: 6, yAxisID: "y2"
         });
       }
       
-      // 湿度
       const humCbs = document.querySelectorAll(`#envDataContainer input[data-env='humidity']:checked`);
       let humIdx = 0;
       humCbs.forEach(cb => {
           const city = cb.dataset.city;
-          dsList.push({
-              label: `${city} 湿度`,
-              data: humidityData[city].slice(startIdx, endIdx + 1), // 切片
-              borderColor: humidityColorList[humIdx % humidityColorList.length],
-              borderWidth: 2,
-              borderDash: [3, 3], // 点状虚线
-              fill: false,
-              tension: 0.1,
-              pointRadius: 0,
-              pointHoverRadius: 6,
-              yAxisID: "y3" // 湿度轴
-          });
-          humIdx++;
+          if (humidityData[city]) {
+            dsList.push({
+                label: `${city} 湿度`,
+                data: humidityData[city].slice(startIdx, endIdx + 1),
+                borderColor: humidityColorList[humIdx % humidityColorList.length],
+                borderWidth: 2, borderDash: [3, 3], fill: false, tension: 0.1,
+                pointRadius: 0, pointHoverRadius: 6, yAxisID: "y3"
+            });
+            humIdx++;
+          }
       });
 
-      // 5. 调用唯一的 createChart 函数
+      // 5. 绘图
       createChart(slicedWeeks, dsList);
     }
 
     /***************************************************************
-     * E2. setGroupCheck：全选/全不选某分组
+     * E2. 分组全选/全不选
      ***************************************************************/
     function setGroupCheck(groupName, isCheck) {
       const cbs = document.querySelectorAll(`#groupContainer input[data-group="${groupName}"]`);
       cbs.forEach(cb => cb.checked = isCheck);
-      updateChartDisplay(); // 重构: 调用新函数
+      updateChartDisplay();
     }
 
     /***************************************************************
-     * F. 全局 全选/全不选
+     * F. 全局全选/全不选
      ***************************************************************/
     function setAllCheck(isCheck) {
       const cbs = document.querySelectorAll(`#groupContainer input[type='checkbox']`);
       cbs.forEach(cb => cb.checked = isCheck);
-      updateChartDisplay(); // 重构: 调用新函数
+      updateChartDisplay();
     }
-
-    /* * G. (原 G 部分已删除)
-     * filterDataRange 和 createChart2 函数已被合并到
-     * updateChartDisplay 和 createChart 中，不再需要。
-     */
 
     /***************************************************************
      * H. 主流程
@@ -670,7 +638,7 @@
       const chartEl = document.getElementById("myChart");
       if (loadingEl) loadingEl.style.display = "block";
       if (chartEl) chartEl.style.display = "none";
-      if (loadingEl) loadingEl.innerHTML = '<h2>正在加载数据，请稍候...</h2>'; // 重置消息
+      if (loadingEl) loadingEl.innerHTML = '<h2>正在加载数据，请稍候...</h2>';
 
       try {
         // 1) 加载关键词
@@ -681,32 +649,27 @@
         globalGroupsRaw = groups;
         groupsData = groups;
 
-        // 2) 加载平均气温
+        // 2) 加载气温
         const avgRaw = await parseCSVWithRetry(AVG_TEMP_CSV_URL, 3);
         const avgMap = convertTempData(avgRaw.data);
-
-        // 3) 加载最高气温
         const maxRaw = await parseCSVWithRetry(MAX_TEMP_CSV_URL, 3);
         const maxMap = convertTempData(maxRaw.data);
         
-        // 新增: 4) 加载湿度
+        // 3) 加载湿度
         const humidityRaw = await parseCSVWithRetry(HUMIDITY_CSV_URL, 3);
         const { cityNames, humidityMap } = processHumidityData(humidityRaw.data);
 
-        // 5) 对齐所有环境数据
+        // 4) 对齐所有环境数据
         tempAvgData = new Array(labelsAll.length).fill(NaN);
         tempMaxData = new Array(labelsAll.length).fill(NaN);
-        // 初始化全局 humidityData
         humidityData = {};
         cityNames.forEach(city => {
           humidityData[city] = new Array(labelsAll.length).fill(NaN);
         });
 
         labelsAll.forEach((wk, i) => {
-          // 气温
           if (avgMap[wk] != null) tempAvgData[i] = avgMap[wk];
           if (maxMap[wk] != null) tempMaxData[i] = maxMap[wk];
-          // 湿度
           cityNames.forEach(city => {
             if (humidityMap[city][wk] != null) {
               humidityData[city][i] = humidityMap[city][wk];
@@ -714,9 +677,8 @@
           });
         });
 
-        // 6) 渲染环境数据面板
+        // 5) 渲染环境数据面板
         const envContainer = document.getElementById("envDataContainer");
-        // 清理旧的（刷新时）
         envContainer.querySelectorAll(`input[data-env='humidity']`).forEach(el => el.parentElement.remove());
         cityNames.forEach(city => {
             const lb = document.createElement("label");
@@ -724,16 +686,16 @@
             cb.type = "checkbox";
             cb.dataset.env = "humidity";
             cb.dataset.city = city;
-            cb.checked = false; // 默认不勾选
+            cb.checked = false; 
             lb.appendChild(cb);
             lb.append(` ${city} 湿度`);
             envContainer.appendChild(lb);
         });
 
-        // 7) 渲染关键词侧边栏
+        // 6) 渲染关键词侧边栏
         renderGroupSidebar(groupsData);
 
-        // 8) 初始化周下拉
+        // 7) 初始化周下拉
         const startSel = document.getElementById("startWeek");
         const endSel = document.getElementById("endWeek");
         startSel.innerHTML = '';
@@ -751,8 +713,8 @@
         startSel.value = 0;
         endSel.value = weeks.length - 1;
 
-        // 9) 默认全选 + 首次绘图
-        updateChartDisplay(); // 重构: 调用新函数
+        // 8) 首次绘图
+        updateChartDisplay();
 
       } catch (err) {
         console.error("数据加载失败:", err);
@@ -784,16 +746,12 @@
         mainArea.classList.remove("sidebar-open");
       });
 
-      // 顶部栏
       document.getElementById("btnRefresh").addEventListener("click", main);
-      // 重构: "更新区间"按钮现在只触发 updateChartDisplay
       document.getElementById("btnFilter").addEventListener("click", updateChartDisplay);
 
-      // 侧边栏
       document.getElementById("globalAllBtn").addEventListener("click", () => setAllCheck(true));
       document.getElementById("globalNoneBtn").addEventListener("click", () => setAllCheck(false));
       
-      // 搜索
       document.getElementById("searchInput").addEventListener("input", (e) => {
         applySearchFilter(e.target.value);
       });
@@ -802,9 +760,15 @@
         applySearchFilter("");
       });
       
-      // 新增: 环境数据面板的监听器
       document.getElementById("envDataContainer").addEventListener("change", (e) => {
         if (e.target.type === 'checkbox') {
+          updateChartDisplay();
+        }
+      });
+
+      // 【修复】: 将 groupContainer 的监听器移到这里，确保只绑定一次
+      document.getElementById("groupContainer").addEventListener("change", (e) => {
+        if (e.target.type === "checkbox") {
           updateChartDisplay();
         }
       });
